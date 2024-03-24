@@ -40,9 +40,13 @@
 #define IO9     12 //MC6805P2 PC0
 #define IO10    13 //MC6805P2 PC1
 
+byte dumpBuf[1024];
+
+/*
 byte ROM_128_to_255[128];
 byte ROM_960_to_1923[964];
 byte ROM_2040_to_2047[8];
+*/
 
 void setup() {
     Serial.begin(115200);
@@ -79,31 +83,11 @@ void setup() {
 }
 
 
-void loop() {
-    byte     b;
-    byte     c;
-    uint16_t i;
-    byte     slide_counter = 1;
-    uint16_t zero_counter;
+inline void resetAndSync(void)
+{
+	byte     b, c;
+    uint16_t addr, prev_addr;
     uint16_t sync_counter;
-    uint16_t addr;
-    uint16_t prev_addr;
-
-    Serial.println("------------------------------");
-    Serial.println(" Type D or d to start dumping");
-    Serial.println("------------------------------");
-    
-    // Wait for command
-    while(1) {
-        if (Serial.available()) {
-            b = Serial.read();
-
-            if (b == 'D' || b == 'd') {
-                Serial.println("Start Dumping...");
-                break;
-            }
-        }
-    }
 
     // Reset MCU
     digitalWrite(RD_RST, LOW);
@@ -151,66 +135,68 @@ void loop() {
             break;
         }
     }
+}
 
-    clock(128 * 8);
 
-    Serial.println("Dumping ROM 128-255...");
-    for (i=0; i<128; i++) {
-        b  = PINC & 0x0F;
-        b |= (PIND << 2) & 0xF0;
-        
-        ROM_128_to_255[i] = b;
+void loop() {
+    byte     b;
+    uint16_t i;
+    uint16_t addr;
 
-        clock(8);
+    Serial.println("------------------------------");
+    Serial.println(" Type D or d to start dumping");
+    Serial.println("------------------------------");
+    
+    // Wait for command
+    while(1) {
+        if (Serial.available()) {
+            b = Serial.read();
+
+            if (b == 'D' || b == 'd') {
+                Serial.println("Start Dumping...");
+                break;
+            }
+        }
     }
 
-    clock(704 * 8);
+    const uint16_t STRIDE = 1024;
 
-    Serial.println("Dumping ROM 960-1923...");
-    for (i=0; i<964; i++) {
-        b  = PINC & 0x0F;
-        b |= (PIND << 2) & 0xF0;
-        
-        ROM_960_to_1923[i] = b;
+	for (addr = 0; addr < 2048; addr += STRIDE) {
+    	Serial.println("// Dumping 1024 bytes, please wait...");
 
-        clock(8);
-    }
+		// Reset MCU and synchronise
+		resetAndSync();
 
-    clock(116 * 8);
+	    if (addr > 0) {
+	    	clock(addr * 8);
+	    }
 
-    Serial.println("Dumping ROM 2040-2047...");
-    for (i=0; i<8; i++) {
-        b  = PINC & 0x0F;
-        b |= (PIND << 2) & 0xF0;
-        
-        ROM_2040_to_2047[i] = b;
+		// dump the block
+	    for (i=0; i<1024; i++) {
+	        b  = PINC & 0x0F;
+	        b |= (PIND << 2) & 0xF0;
+	        
+	        dumpBuf[i] = b;
+	
+	        clock(8);
+	    }
 
-        clock(8);
-    }
-
-    
-
-    Serial.println();
-    Serial.print("byte ROM_128_to_255[128] = {");
-    printArray(ROM_128_to_255, 128);
-    Serial.println();
-    Serial.println("};");
-    Serial.println();
-    
-    Serial.print("byte ROM_960_to_1923[964] = {");
-    printArray(ROM_960_to_1923, 964);
-    Serial.println();
-    Serial.println("};");
-    Serial.println();
-    
-    Serial.print("byte ROM_2040_to_2047[8] = {");
-    printArray(ROM_2040_to_2047, 8);
-    Serial.println();
-    Serial.println("};");
-    Serial.println();
-
-    Serial.println("Dump succeeded!");
-    Serial.println("The arrays above are used in Program.ino:");
+		// print out the block
+	    Serial.println();
+	    Serial.print("byte ROM_");
+	    Serial.print(addr);
+	    Serial.print("_to_");
+	    Serial.print(addr + STRIDE - 1);
+	    Serial.print("[");
+	    Serial.print(STRIDE);
+	    Serial.print("] = {");
+	    printArray(dumpBuf, 1024);
+	    Serial.println();
+	    Serial.println("};");
+	    Serial.println();
+	}
+	
+	Serial.println("// Dump complete.");
     Serial.println();
 }
 
@@ -313,4 +299,3 @@ uint16_t restore_address(byte b, byte c) {
 
     return addr;
 }
-
